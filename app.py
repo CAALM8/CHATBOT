@@ -6,6 +6,22 @@ st.title("😀 Hugging Face Chatbot (Streamlit)")
 
 # Sidebar settings
 st.sidebar.header("设置")
+
+# --- Token 获取教程 ---
+with st.sidebar.expander("📘 如何获取 HuggingFace Token？（点击展开）"):
+    st.markdown("""
+**1. 打开 HuggingFace 账号设置：**  
+👉 https://huggingface.co/settings/tokens  
+
+**2. 点击 "New token" 创建新 Token**  
+- Name：随便写  
+- Role：**Read**（读取权限即可）  
+- 其它保持默认  
+- 创建后复制它  
+
+**3. 在左侧输入框粘贴你的 Token**  
+""")
+
 HF_TOKEN = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
 MODEL_ID = st.sidebar.text_input("模型 ID", "Qwen/Qwen2.5-7B-Instruct")
 
@@ -31,7 +47,7 @@ if user_input and HF_TOKEN:
                     token=HF_TOKEN
                 )
 
-                # 使用统一的 Chat Completions API (最稳)
+                # Chat Completions API
                 response = client.chat.completions.create(
                     model=MODEL_ID,
                     messages=[
