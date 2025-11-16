@@ -5,20 +5,12 @@ st.set_page_config(page_title="Hugging Face Chatbot", layout="wide")
 
 st.title("😀 Hugging Face Chatbot (Streamlit)")
 
-# --- Sidebar settings ---
+# Sidebar
 st.sidebar.header("设置")
-
 HF_TOKEN = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
 MODEL_ID = st.sidebar.text_input("模型 ID", "Qwen/Qwen2.5-7B-Instruct")
 
-# 如果你想测试别的模型，填几个可用的预设：
-# - meta-llama/Llama-3.1-8B-Instruct
-# - mistralai/Mistral-Nemo-Instruct-2407
-# - google/gemma-2-2b-it
-# - Qwen/Qwen2.5-7B-Instruct
-
-
-# --- Chat UI ---
+# Chat history
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
@@ -33,21 +25,24 @@ if prompt and HF_TOKEN:
 
     with st.chat_message("assistant"):
         with st.spinner("正在生成回应..."):
+
             try:
                 client = InferenceClient(
                     model=MODEL_ID,
                     token=HF_TOKEN
                 )
 
-                # 调用 HF Inference API（自动选择文本生成模型）
-                response = client.text_generation(
-                    prompt,
+                # --- 使用 conversational（适配 Qwen 系列） ---
+                response = client.conversational(
+                    messages=st.session_state["messages"],
                     max_new_tokens=256,
                     temperature=0.7,
                 )
 
-                st.session_state["messages"].append({"role": "assistant", "content": response})
-                st.write(response)
+                reply = response["generated_text"]
+
+                st.session_state["messages"].append({"role": "assistant", "content": reply})
+                st.write(reply)
 
             except Exception as e:
                 st.error(f"❌ 发生错误：{str(e)}")
