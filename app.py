@@ -2,7 +2,6 @@ import streamlit as st
 from huggingface_hub import InferenceClient
 
 st.set_page_config(page_title="Hugging Face Chatbot", layout="wide")
-
 st.title("😀 Hugging Face Chatbot (Streamlit)")
 
 # Sidebar
@@ -32,22 +31,21 @@ if user_input and HF_TOKEN:
                     token=HF_TOKEN
                 )
 
-                # --- 核心：使用通用聊天 API ---
-                payload = {
-                    "inputs": {
-                        "past_user_inputs": [m["content"] for m in st.session_state["messages"] if m["role"] == "user"],
-                        "generated_responses": [m["content"] for m in st.session_state["messages"] if m["role"] == "assistant"],
-                        "text": user_input
-                    },
-                    "parameters": {
-                        "temperature": 0.7,
-                        "max_new_tokens": 256
-                    }
-                }
+                # 拼接历史对话，构成 prompt
+                history_text = ""
+                for m in st.session_state["messages"]:
+                    role = "User" if m["role"] == "user" else "Assistant"
+                    history_text += f"{role}: {m['content']}\n"
+                history_text += "Assistant:"
 
-                response = client.post(json=payload)
-                reply = response.get("generated_text", "")
+                # 直接使用 text_generation —— 所有版本都支持！
+                output = client.text_generation(
+                    prompt=history_text,
+                    max_new_tokens=200,
+                    temperature=0.7
+                )
 
+                reply = output
                 st.session_state["messages"].append({"role": "assistant", "content": reply})
                 st.write(reply)
 
