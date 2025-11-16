@@ -1,55 +1,46 @@
-import gradio as gr
+import streamlit as st
 from huggingface_hub import InferenceClient
 
-def chat_with_hf(token, model_id, user_input, history):
+st.set_page_config(page_title="HF Chatbot", layout="wide")
 
+st.title("😄 Hugging Face Chatbot (Streamlit)")
+
+# --- Sidebar ---
+st.sidebar.header("设置")
+
+token = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
+model_id = st.sidebar.text_input("模型 ID", value="google/gemma-2b-it")
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# --- Chat input ---
+user_input = st.chat_input("输入你的消息...")
+
+if user_input:
     if not token:
-        return history + [["You", user_input], ["Bot", "❌ 请先输入你的 Hugging Face Token"]]
-
-    if not model_id:
-        return history + [["You", user_input], ["Bot", "❌ 请先输入模型 ID"]]
-
-    try:
+        st.error("❌ 请先在左侧输入 HuggingFace Token")
+    else:
         client = InferenceClient(token=token)
 
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=[{"role": "user", "content": user_input}],
-            max_tokens=256,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": user_input}],
+                max_tokens=256,
+            )
 
-        bot_reply = response.choices[0].message["content"]
+            reply = response.choices[0].message["content"]
 
-        history.append(["你", user_input])
-        history.append(["🤖", bot_reply])
+            st.session_state.history.append(("user", user_input))
+            st.session_state.history.append(("bot", reply))
 
-        return history
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
 
-    except Exception as e:
-        history.append(["你", user_input])
-        history.append(["❌ Error", str(e)])
-        return history
-
-
-with gr.Blocks() as demo:
-
-    gr.Markdown("# 😄 Hugging Face Chatbot")
-
-    with gr.Row():
-        token = gr.Textbox(label="你的 HuggingFace Token（必填）", type="password")
-        model_id = gr.Textbox(label="模型 ID", placeholder="例如：google/gemma-2b-it")
-
-    chatbot = gr.Chatbot()
-    user_input = gr.Textbox(label="你：")
-    send_btn = gr.Button("发送")
-    clear_btn = gr.Button("清空对话")
-
-    send_btn.click(
-        chat_with_hf,
-        inputs=[token, model_id, user_input, chatbot],
-        outputs=[chatbot]
-    )
-
-    clear_btn.click(lambda: None, None, chatbot, queue=False)
-
-demo.launch()
+# --- Display chat history ---
+for role, msg in st.session_state.history:
+    if role == "user":
+        st.chat_message("user").write(msg)
+    else:
+        st.chat_message("assistant").write(msg)
