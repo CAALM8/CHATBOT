@@ -1,66 +1,95 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 
-st.set_page_config(page_title="Hugging Face Chatbot", layout="wide")
-st.title("😀 Hugging Face Chatbot (Streamlit)")
+# -----------------------------
+# Page Config
+# -----------------------------
+st.set_page_config(
+    page_title="Hugging Face Chatbot (Streamlit)",
+    layout="wide",
+)
 
-# Sidebar settings
-st.sidebar.header("设置")
+st.title("🤖 Hugging Face Chatbot (Streamlit)")
 
-# --- Token 获取教程 ---
-with st.sidebar.expander("📘 如何获取 HuggingFace Token？（点击展开）"):
+# -----------------------------
+# Sidebar Settings
+# -----------------------------
+st.sidebar.header("Settings")
+
+# Token input
+hf_token = st.sidebar.text_input(
+    "Your HuggingFace Token (required)", 
+    type="password",
+    help="Paste your HuggingFace Access Token here."
+)
+
+# Model input
+model_id = st.sidebar.text_input(
+    "Model ID",
+    value="Qwen/Qwen2.5-7B-Instruct",
+    help="Example: Qwen/Qwen2.5-7B-Instruct"
+)
+
+# Token Tutorial (English)
+with st.sidebar.expander("How to Get Your HuggingFace Token?"):
     st.markdown("""
-**1. 打开 HuggingFace 账号设置：**  
-👉 https://huggingface.co/settings/tokens  
+### 🔑 How to Get Your HuggingFace Token
 
-**2. 点击 "New token" 创建新 Token**  
-- Name：随便写  
-- Role：**Read**（读取权限即可）  
-- 其它保持默认  
-- 创建后复制它  
+1. Go to **https://huggingface.co/settings/tokens**
+2. Click **'New token'**
+3. Choose **Read Access** (for public models)
+4. Copy the generated token
+5. Paste it into the field above
 
-**3. 在左侧输入框粘贴你的 Token**  
-""")
+⚠️ **Do NOT share your token publicly!**
+    """)
 
-HF_TOKEN = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
-MODEL_ID = st.sidebar.text_input("模型 ID", "Qwen/Qwen2.5-7B-Instruct")
+st.sidebar.markdown("---")
 
-# Chat history
+# -----------------------------
+# Initialize Chat History
+# -----------------------------
 if "messages" not in st.session_state:
-    st.session_state["messages"] = []
+    st.session_state.messages = []
 
-for msg in st.session_state["messages"]:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
+# -----------------------------
+# Display Chat History
+# -----------------------------
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.chat_message("user").write(msg["content"])
+    else:
+        st.chat_message("assistant").write(msg["content"])
 
-user_input = st.chat_input("请输入消息...")
+# -----------------------------
+# User Input
+# -----------------------------
+user_input = st.chat_input("Type your message...")
 
-if user_input and HF_TOKEN:
-    st.session_state["messages"].append({"role": "user", "content": user_input})
+if user_input and hf_token and model_id:
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": user_input})
+    st.chat_message("user").write(user_input)
 
-    with st.chat_message("assistant"):
-        with st.spinner("正在生成..."):
+    try:
+        # -----------------------------
+        # HuggingFace Inference Client
+        # -----------------------------
+        client = InferenceClient(api_key=hf_token)
 
-            try:
-                client = InferenceClient(
-                    model=MODEL_ID,
-                    token=HF_TOKEN
-                )
+        completion = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": user_input}]
+        )
 
-                # Chat Completions API
-                response = client.chat.completions.create(
-                    model=MODEL_ID,
-                    messages=[
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state["messages"]
-                    ],
-                    max_tokens=200,
-                    temperature=0.7,
-                )
+        assistant_reply = completion.choices[0].message["content"]
 
-                reply = response.choices[0].message["content"]
-                st.session_state["messages"].append({"role": "assistant", "content": reply})
-                st.write(reply)
+        # Save reply
+        st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+        st.chat_message("assistant").write(assistant_reply)
 
-            except Exception as e:
-                st.error(f"❌ 发生错误：{str(e)}")
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+elif user_input and not hf_token:
+    st.error("❗ Please enter your HuggingFace token in the left sidebar.")
