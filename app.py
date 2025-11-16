@@ -1,21 +1,20 @@
 import streamlit as st
 import requests
 
-st.set_page_config(page_title="HF Chatbot", page_icon="🤖", layout="wide")
-st.title("😊 Hugging Face Chatbot")
+st.set_page_config(page_title="HF Chatbot", layout="wide")
+st.title("😄 Hugging Face Chatbot")
 
-# 默认模型
-DEFAULT_MODEL = "HuggingFaceH4/zephyr-7b-beta"
-API_URL = "https://api-inference.huggingface.co/v1/chat/completions"
+# Sidebar
+st.sidebar.header("⚙ 设置")
+token = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
+model_id = st.sidebar.text_input("模型 ID", value="HuggingFaceH4/zephyr-7b-beta")
 
-# 初始化保存对话
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# -------------------------------
-# 调用 HuggingFace Chat API
-# -------------------------------
-def hf_chat(messages, token, model):
+def hf_chat(messages, model, token):
+    url = "https://router.huggingface.co/hf-inference/chat/completions"
+    
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
@@ -25,67 +24,39 @@ def hf_chat(messages, token, model):
         "model": model,
         "messages": messages,
         "max_tokens": 256,
-        "temperature": 0.7
     }
 
     try:
-        resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
         resp.raise_for_status()
-        data = resp.json()
-
-        return data["choices"][0]["message"]["content"], None
-
+        return resp.json(), None
     except Exception as e:
-        return None, f"❌ Error: {e}"
+        return None, str(e)
 
+# Chat UI
+user_input = st.text_input("✏️ 你:", "")
 
-# -------------------------------
-# Sidebar 设置
-# -------------------------------
-with st.sidebar:
-    st.header("⚙ 设置")
-
-    token = st.text_input(
-        "你的 HuggingFace Token（必填）",
-        type="password",
-        placeholder="hf_xxxxxxxxx"
-    )
-
-    model = st.text_input("模型 ID", DEFAULT_MODEL)
-
-    if st.button("🧹 清空对话"):
-        st.session_state.messages = []
-        st.success("对话已清空")
-
-
-# -------------------------------
-# 显示历史消息
-# -------------------------------
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.write(msg["content"])
-
-# -------------------------------
-# 输入框
-# -------------------------------
-prompt = st.chat_input("输入你的问题...")
-
-if prompt:
+if st.button("发送"):
     if not token:
-        st.error("❌ 请先在左侧输入 HuggingFace token")
+        st.error("❗ 请在左侧输入 Hugging Face Token")
     else:
-        # 保存用户消息
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
-        # 调用 API
-        reply, err = hf_chat(st.session_state.messages, token, model)
+        res, err = hf_chat(st.session_state.messages, model_id, token)
 
         if err:
-            with st.chat_message("assistant"):
-                st.error(err)
+            st.error(f"❌ Error: {err}")
         else:
+            reply = res["choices"][0]["message"]["content"]
             st.session_state.messages.append({"role": "assistant", "content": reply})
-            with st.chat_message("assistant"):
-                st.write(reply)
+
+# Display messages
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        st.markdown(f"🧑 **你:** {msg['content']}")
+    else:
+        st.markdown(f"🤖 **AI:** {msg['content']}")
+
+if st.sidebar.button("🧹 清空对话"):
+    st.session_state.messages = []
+    st.rerun()
