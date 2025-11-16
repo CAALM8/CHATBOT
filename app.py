@@ -18,13 +18,13 @@ for msg in st.session_state["messages"]:
     with st.chat_message(msg["role"]):
         st.write(msg["content"])
 
-prompt = st.chat_input("请输入消息...")
+user_input = st.chat_input("请输入消息...")
 
-if prompt and HF_TOKEN:
-    st.session_state["messages"].append({"role": "user", "content": prompt})
+if user_input and HF_TOKEN:
+    st.session_state["messages"].append({"role": "user", "content": user_input})
 
     with st.chat_message("assistant"):
-        with st.spinner("正在生成回应..."):
+        with st.spinner("正在生成..."):
 
             try:
                 client = InferenceClient(
@@ -32,14 +32,21 @@ if prompt and HF_TOKEN:
                     token=HF_TOKEN
                 )
 
-                # --- 使用 conversational（适配 Qwen 系列） ---
-                response = client.conversational(
-                    messages=st.session_state["messages"],
-                    max_new_tokens=256,
-                    temperature=0.7,
-                )
+                # --- 核心：使用通用聊天 API ---
+                payload = {
+                    "inputs": {
+                        "past_user_inputs": [m["content"] for m in st.session_state["messages"] if m["role"] == "user"],
+                        "generated_responses": [m["content"] for m in st.session_state["messages"] if m["role"] == "assistant"],
+                        "text": user_input
+                    },
+                    "parameters": {
+                        "temperature": 0.7,
+                        "max_new_tokens": 256
+                    }
+                }
 
-                reply = response["generated_text"]
+                response = client.post(json=payload)
+                reply = response.get("generated_text", "")
 
                 st.session_state["messages"].append({"role": "assistant", "content": reply})
                 st.write(reply)
