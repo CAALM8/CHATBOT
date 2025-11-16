@@ -1,108 +1,118 @@
 import streamlit as st
 import requests
-import time
+import json
 
-st.set_page_config(page_title="Free Chatbot (Hugging Face)", layout="wide")
+# -----------------------------
+# Streamlit UI 设置
+# -----------------------------
+st.set_page_config(page_title="HF Chatbot", page_icon="🤖", layout="wide")
+st.title("🤖 Hugging Face Chatbot")
 
-st.title("💬 Free Chatbot — Hugging Face Inference API (TinyLlama)")
+# 默认模型
+MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
 
-st.markdown(
-    """
-This demo uses the Hugging Face Inference API to call an open-source chat model.\n
-**Important:** Put your Hugging Face API token in Streamlit secrets as `HF_TOKEN`.\n
-Model (recommended): `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
-"""
-)
+# session_state 初始化
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-MODEL_ID = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-
-if "history" not in st.session_state:
-    # history will be list of dicts: {"role": "user" or "bot", "content": "..."}
-    st.session_state.history = []
 if "system" not in st.session_state:
     st.session_state.system = "You are a helpful assistant."
 
-with st.sidebar:
-    st.header("Settings")
-    st.text_input("System prompt (role)", value=st.session_state.system, key="system_input")
-    if st.button("Set system prompt"):
-        st.session_state.system = st.session_state.system_input
-        st.session_state.history = []
-    st.markdown("---")
-    st.markdown("Hugging Face token must be saved in Streamlit secrets as `HF_TOKEN`.\n\nExample `secrets.toml`:\n```\nHF_TOKEN = \"hf_xxx...\"\n```")
-    st.markdown("---")
-    st.write("Model: " + MODEL_ID)
-    st.markdown("Note: Hugging Face free inference has limited quota. Use sparingly.")
+# -----------------------------
+# 🔥 Hugging Face 新版 API 封装函数
+# -----------------------------
+def hf_generate(prompt, token, model_id=MODEL_ID):
+    """
+    使用 Hugging Face Inference Router 新接口：
+    https://router.huggingface.co/hf-inference/chat/completions
+    """
+    api_url = "https://router.huggingface.co/hf-inference/chat/completions"
 
-def hf_generate(prompt, token, model_id=MODEL_ID, max_length=512):
-    """Call Hugging Face Inference API text generation endpoint."""
-    api_url = f"https://api-inference.huggingface.co/models/{model_id}"
-    headers = {"Authorization": f"Bearer {token}"}
-    payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 256, "return_full_text": False},
-        "options": {"wait_for_model": True}
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
     }
+
+    payload = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": st.session_state.system},
+            {"role": "user", "content": prompt}
+        ],
+        "max_tokens": 256,
+        "temperature": 0.7
+    }
+
     try:
         resp = requests.post(api_url, headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
+        resp.raise_for_status()  # 若失败直接抛出
         data = resp.json()
-        # Many models return a list of generations with 'generated_text'
-        if isinstance(data, dict) and data.get("error"):
-            return None, f"Model error: {data.get('error')}"
-        if isinstance(data, list) and len(data) > 0:
-            # Some HF responses are like [{"generated_text": "..."}]
-            text = data[0].get("generated_text") or data[0].get("generated_text", "")
-            return text, None
-        # fallback if API uses different schema
-        return str(data), None
-    except requests.exceptions.HTTPError as e:
-        return None, f"HTTP error: {e} - {resp.text if 'resp' in locals() else ''}"
-    except requests.exceptions.Timeout:
-        return None, "Request timed out."
+
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"], None
+        else:
+            return None, f"⚠ Unexpected response: {data}"
+
     except Exception as e:
-        return None, f"Request failed: {e}"
+        return None, f"❌ Request error: {e}"
 
-st.subheader("Chat")
 
-cols = st.columns([4,1])
-with cols[0]:
-    user_input = st.text_input("You:", key="user_input")
-with cols[1]:
-    send = st.button("Send")
+# -----------------------------
+# Sidebar 设置
+# -----------------------------
+with st.sidebar:
+    st.header("⚙ 设置")
 
-# Display history
-for msg in st.session_state.history:
-    role = msg.get("role", "user")
-    content = msg.get("content", "")
-    if role == "user":
-        st.markdown(f"**You:** {content}")
-    else:
-        st.markdown(f"**Bot:** {content}")
+    token = st.text_input(
+        "你的 HuggingFace Token（必填）",
+        type="password",
+        placeholder="hf_xxxxxxxxxxxxx"
+    )
 
-if send and user_input.strip():
-    # Append user message
-    st.session_state.history.append({"role":"user", "content": user_input.strip()})
-    # Build prompt: simple concatenation of system + messages
-    prompt_parts = [f"System: {st.session_state.system}", "Conversation:"]
-    for m in st.session_state.history:
-        prefix = "User" if m["role"]=="user" else "Assistant"
-        prompt_parts.append(f"{prefix}: {m['content']}")
-    prompt_parts.append("Assistant:")
-    prompt = "\n".join(prompt_parts)
+    st.session_state.system = st.text_area(
+        "系统提示词 System Prompt",
+        st.session_state.system
+    )
 
-    # Get token from secrets
-    hf_token = None
-    try:
-        hf_token = st.secrets["HF_TOKEN"]
-    except Exception:
-        st.error("Hugging Face token not found in Streamlit secrets. Please set HF_TOKEN in secrets.toml")
-    if hf_token:
-        with st.spinner("Generating..."):
-            text, err = hf_generate(prompt, hf_token)
-            if err:
-                st.error(err)
-            else:
-                # Append assistant reply and re-render
-                st.session_state.history.append({"role":"bot", "content": text})
-                st.experimental_rerun()
+    MODEL_ID = st.text_input(
+        "模型 ID（可选）",
+        MODEL_ID
+    )
+
+    if st.button("🧹 清空对话"):
+        st.session_state.messages = []
+        st.success("已清空！")
+
+
+# -----------------------------
+# 显示历史消息
+# -----------------------------
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.write(m["content"])
+
+
+# -----------------------------
+# 输入框：用户输入
+# -----------------------------
+prompt = st.chat_input("请输入你的问题…")
+
+if prompt and token:
+    # 显示用户消息
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
+
+    # 调用 HF API
+    reply, err = hf_generate(prompt, token, MODEL_ID)
+
+    if err:
+        reply = err
+
+    # 显示模型回复
+    st.session_state.messages.append({"role": "assistant", "content": reply})
+    with st.chat_message("assistant"):
+        st.write(reply)
+
+elif prompt and not token:
+    st.error("❌ 请先在左侧填入 HuggingFace API Token！")
