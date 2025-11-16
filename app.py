@@ -4,7 +4,7 @@ from huggingface_hub import InferenceClient
 st.set_page_config(page_title="Hugging Face Chatbot", layout="wide")
 st.title("😀 Hugging Face Chatbot (Streamlit)")
 
-# Sidebar
+# Sidebar settings
 st.sidebar.header("设置")
 HF_TOKEN = st.sidebar.text_input("你的 HuggingFace Token（必填）", type="password")
 MODEL_ID = st.sidebar.text_input("模型 ID", "Qwen/Qwen2.5-7B-Instruct")
@@ -31,21 +31,18 @@ if user_input and HF_TOKEN:
                     token=HF_TOKEN
                 )
 
-                # 拼接历史对话，构成 prompt
-                history_text = ""
-                for m in st.session_state["messages"]:
-                    role = "User" if m["role"] == "user" else "Assistant"
-                    history_text += f"{role}: {m['content']}\n"
-                history_text += "Assistant:"
-
-                # 直接使用 text_generation —— 所有版本都支持！
-                output = client.text_generation(
-                    prompt=history_text,
-                    max_new_tokens=200,
-                    temperature=0.7
+                # 使用统一的 Chat Completions API (最稳)
+                response = client.chat.completions.create(
+                    model=MODEL_ID,
+                    messages=[
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state["messages"]
+                    ],
+                    max_tokens=200,
+                    temperature=0.7,
                 )
 
-                reply = output
+                reply = response.choices[0].message["content"]
                 st.session_state["messages"].append({"role": "assistant", "content": reply})
                 st.write(reply)
 
